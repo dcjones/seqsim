@@ -1,0 +1,125 @@
+#!/usr/bin/env python
+
+# TODO: make this python3, for fuck's sake.
+
+import argparse
+import Bio.SeqIO as SeqIO
+import gtf
+from sys         import stdout, stderr, stdin
+from collections import defaultdict
+from bisect      import bisect
+
+
+def overlaps((u1, v1), (u2, v2)):
+    ''' Determine whether [u1, v2] overlaps [u2, v2]. '''
+
+    assert u1 <= v1
+    assert u2 <= v2
+
+    return u1 <= v2 and v1 >= v2
+
+
+class transcript:
+    ''' Representation of a single transcript. '''
+
+    def __init__(self):
+        self.exons = []
+        self.seqname = None
+        self.strand  = None
+
+
+    def add_exon(self, row):
+        ''' Insert an exon into the transcript. '''
+
+        if row.feature != 'exon': return
+
+        if self.seqname == None:
+            self.seqname = row.seqname
+        else:
+            assert self.seqname == row.seqname
+
+        if self.strand == None:
+            self. strand = row.strand
+        else:
+            assert self.strand == row.strand
+
+        # '-1' to make 0-based, end-inclusive
+        (start, end) = (row.start - 1, row.end - 1)
+
+        i = bisect(self.exons, (start, end))
+
+        if len(self.exons) > i:
+            assert not overlaps(self.exons[i], (start, end))
+
+        if i > 0:
+            assert not overlaps(self.exons[i - 1], (start, end))
+
+        self.exons.insert(i, (start, end))
+
+
+
+
+def read_transcripts(genes_fn):
+    ''' Parse all the transcripts from a GTF file. '''
+
+    genes = defaultdict(transcript)
+
+    for row in gtf.gtf_file(genes_fn):
+        genes[row.attributes['transcript_id']].add_exon(row)
+
+    stderr.write('read {0} transcripts\n'.format(len(genes)))
+    return genes.values()
+
+
+
+def main():
+    ap = argparse.ArgumentParser()
+
+    ap.add_argument('-n', type = int, default = 10000000,
+                    help = 'number of reads / pairs to generate')
+
+    ap.add_argument('-p', '--paired-end', action = 'store_true',
+                    default = False,
+                    help = 'generate paired end reads')
+
+    ap.add_argument('genome_fn', metavar = 'genome.fa', type = str,
+                    help = 'genome sequence, in FASTA format')
+
+    ap.add_argument('genes_fn', metavar = 'genes.gtf', type = str,
+                    help = 'gene annotations in GTF format')
+
+    args = ap.parse_args()
+
+
+    T = read_transcripts(args.genes_fn)
+
+    for seq in SeqIO.parse(open(args.genome_fn), 'fasta'):
+        stderr.write('{seqname} ...'.format(seqname = seq.name))
+
+        # select transcript from this sequence
+        ts = [t for t in T if t.seqname == seq.name]
+
+        # randomly choose expressed transcripts
+        # TODO
+
+        # randomly choose expression levels (from a bournoulli-something
+        # mixture)
+        # TODO
+
+        # generate fragments
+        # TODO
+
+        # generate reads from fragments
+        # TODO
+
+# Actually, mabye this is all wrong.
+# We want to generate a fixed number of reads, so we need to define a
+# distribution, and draw samples from it, before extracting sequence.
+
+
+        stderr.write('\n')
+
+
+if __name__ == '__main__': main()
+
+
