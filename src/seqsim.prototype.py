@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-# TODO: make this python3, for fuck's sake.
+# This is the first version of seqsim. I rewrote everything in C++ after, as the
+# python version is just too slow.
 
 '''
 seqsim
