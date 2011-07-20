@@ -246,7 +246,7 @@ int search_sorted(double y, double* xs, size_t n)
 {
     int a = 0;
     int b = (int) n - 1;
-    int i;
+    int i = -1;
 
     while (a <= b) {
         i = a + (b - a) / 2;
@@ -439,7 +439,7 @@ void print_read(FILE* fout, size_t readnum, pos_t start, pos_t end,
                 char* seq1, char* seq2)
 {
     get_seq(seq1, seq, start, start + args.readlen - 1, t);
-    get_seq(seq2, seq, start, start + args.readlen - 1, t);
+    get_seq(seq2, seq, start, end   - args.readlen + 1, t);
 
     upper_str(seq1);
     upper_str(seq2);
@@ -491,11 +491,21 @@ void print_help(FILE* fout)
     fprintf(fout, "Version: %s\n\n", VERSION);
     fprintf(fout,
             "Options:\n"
-            "  TODO"
+            "  -h, --help          show this help message and exit\n"
+            "  -n N                number of reads / pairs to generate\n"
+            "  -o, --out=PRE       output files will have the given prefix\n"
+            "                      (default: 'seqsim')\n"
+            "  -s, --stranded      generate strand specific reads\n"
+            "  -p, --paired-end    generate paired-end reads\n"
+            "      --expr-pr=N     probability that a transcript is expressed\n"
+            "      --expr_a=N      expression distribution parameter (hint: a\n"
+            "                      small number results in more variance)\n"
+            "      --frag-pr=N     probability of fragmentation\n"
+            "      --frag-n=N      number of fragments to generate\n"
+            "      --size-low=N    size selection lower bound\n"
+            "      --size-high=N   size selection upper bound\n"
+            "      --size-noise=N  inexectness / variance in size selection\n"
             "\n");
-
-
-    // TODO
 }
 
 
@@ -527,10 +537,10 @@ int main(int argc, char* argv[])
         {"paired-end", no_argument,       NULL, 'p'},
         {"stranded",   no_argument,       NULL, 's'},
         {"readlen",    required_argument, NULL, 'k'},
-        {"expr_pr",    required_argument, NULL,  0 }, // 5
-        {"expr_a",     required_argument, NULL,  0 },
-        {"frag_pr",    required_argument, NULL,  0 },
-        {"frag_n",     required_argument, NULL,  0 },
+        {"expr-pr",    required_argument, NULL,  0 }, // 5
+        {"expr-a",     required_argument, NULL,  0 },
+        {"frag-pr",    required_argument, NULL,  0 },
+        {"frag-n",     required_argument, NULL,  0 },
         {"size-low",   required_argument, NULL,  0 },
         {"size-high",  required_argument, NULL,  0 },
         {"size-noise", required_argument, NULL,  0 },
