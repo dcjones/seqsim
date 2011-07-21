@@ -4,7 +4,7 @@ AC_INIT([seqsim], [1.0], [dcjones@cs.washington.edu])
 AM_INIT_AUTOMAKE( [foreign -Wall -Werror] )
 AC_CONFIG_HEADERS([config.h])
 
-CFLAGS="-O2 -g -Wall -Wextra"
+CFLAGS="-O3 -g -Wall -Wextra"
 CXXFLAGS="$CFLAGS"
 
 

@@ -237,6 +237,29 @@ void generate_expression(double* xs, size_t n)
     printf("done.\n");
 }
 
+
+/* Print an expression table. */
+void print_expression(const deque<transcript> T, const double* xs)
+{
+    char fn[1024];
+    snprintf(fn, sizeof(fn), "%s.expr", args.out);
+
+    FILE* fout = fopen_or_die(fn, "w");
+
+    fprintf(fout, "gene_id\ttranscript_id\texpr\n");
+    deque<transcript>::const_iterator t;
+    size_t i;
+    for (i = 0, t = T.begin(); t != T.end(); ++i, ++t) {
+        fprintf(fout, "%s\t%s\t%0.6e\n",
+                      t->gene_id.c_str(),
+                      t->transcript_id.c_str(),
+                      xs[i]);
+    }
+
+    fclose(fout);
+}
+
+
 /* binary search: return an index i, where for all j < i,
  *      xs[j] <= y
  *  and for all k > i
@@ -401,8 +424,6 @@ void seqrc(char* seq, int n)
 void get_seq(char* dest, const char* src, pos_t start, pos_t end,
              const transcript& t)
 {
-    pos_t gene_start = t.exons.begin()->start;
-
     pos_t u = 0; // offset into dest
     pos_t v = 0; // offset into src
     pos_t l;
@@ -414,8 +435,8 @@ void get_seq(char* dest, const char* src, pos_t start, pos_t end,
         l = exon->end - exon->start + 1;
 
         if (v <= start && start < v + l) {
-            a = gene_start + max(start, v);
-            b = gene_start + min(end + 1, v + l);
+            a = exon->start + max(start, v);
+            b = exon->start + min(end + 1, v + l);
 
             copy(src + a, src + b, dest + u);
             u += b - a;
@@ -434,12 +455,13 @@ void get_seq(char* dest, const char* src, pos_t start, pos_t end,
 
 
 
-void print_read(FILE* fout, size_t readnum, pos_t start, pos_t end,
+void print_read(FILE* fout1, FILE* fout2,
+                size_t readnum, pos_t start, pos_t end,
                 const transcript& t, const char* seq,
                 char* seq1, char* seq2)
 {
     get_seq(seq1, seq, start, start + args.readlen - 1, t);
-    get_seq(seq2, seq, start, end   - args.readlen + 1, t);
+    get_seq(seq2, seq, end - args.readlen + 1, end, t);
 
     upper_str(seq1);
     upper_str(seq2);
@@ -461,18 +483,18 @@ void print_read(FILE* fout, size_t readnum, pos_t start, pos_t end,
 
 
     if (args.paired_end) {
-        fprintf(fout, "@seqsim.%s.%zu/1\n%s\n", args.out, readnum, seq1);
+        fprintf(fout1, "@seqsim.%s.%zu/1\n%s\n", args.out, readnum, seq1);
         memset(seq1, max_qual, args.readlen);
-        fprintf(fout, "+\n%s\n", seq1);
+        fprintf(fout1, "+\n%s\n", seq1);
 
-        fprintf(fout, "@seqsim.%s.%zu/2\n%s\n", args.out, readnum, seq2);
+        fprintf(fout2, "@seqsim.%s.%zu/2\n%s\n", args.out, readnum, seq2);
         memset(seq2, max_qual, args.readlen);
-        fprintf(fout, "+\n%s\n", seq2);
+        fprintf(fout2, "+\n%s\n", seq2);
     }
     else {
-        fprintf(fout, "@seqsim.%s.%zu\n%s\n", args.out, readnum, seq1);
+        fprintf(fout1, "@seqsim.%s.%zu\n%s\n", args.out, readnum, seq1);
         memset(seq1, max_qual, args.readlen);
-        fprintf(fout, "+\n%s\n", seq1);
+        fprintf(fout1, "+\n%s\n", seq1);
     }
 }
 
@@ -656,6 +678,8 @@ int main(int argc, char* argv[])
     double* xs = new double [n];
     generate_expression(xs, n);
 
+    /* print expression */
+    print_expression(T, xs);
 
     /* generate random fragments */
     int* fs = new int [3 * args.frag_n];
@@ -668,9 +692,23 @@ int main(int argc, char* argv[])
     /* extract sequence */
     printf("getting sequence ...\n");
 
+    FILE* fout1;
+    FILE* fout2;
     char out_fn[1024];
-    snprintf(out_fn, sizeof(out_fn), "%s.fastq", args.out);
-    FILE* fout = fopen_or_die(out_fn, "w");
+
+    if (args.paired_end) {
+        snprintf(out_fn, sizeof(out_fn), "%s.1.fastq", args.out);
+        fout1 = fopen_or_die(out_fn, "w");
+
+        snprintf(out_fn, sizeof(out_fn), "%s.2.fastq", args.out);
+        fout2 = fopen_or_die(out_fn, "w");
+    }
+    else {
+        snprintf(out_fn, sizeof(out_fn), "%s.fastq", args.out);
+        fout1 = fopen_or_die(out_fn, "w");
+
+        fout2 = NULL;
+    }
 
     FILE* fin = fopen_or_die(args.genome_fn, "r");
     fastq_t* fqf = fastq_open(fin);
@@ -703,7 +741,7 @@ int main(int argc, char* argv[])
 
             /* print generate reads */
             for (i = 0; i < rs[v]; ++i, ++readnum) {
-                print_read(fout, readnum,
+                print_read(fout1, fout2, readnum,
                            fs[v * 3 + 1], fs[v * 3 + 2],
                            T[fs[v * 3]], seq->seq.s,
                            seq1, seq2);
@@ -713,7 +751,9 @@ int main(int argc, char* argv[])
 
     printf("done.\n");
 
-    fclose(fout);
+    fclose(fout1);
+    if (fout2) fclose(fout2);
+
     fastq_free_seq(seq);
     fastq_close(fqf);
 
