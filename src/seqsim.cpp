@@ -434,18 +434,22 @@ void get_seq(char* dest, const char* src, pos_t start, pos_t end,
     for (exon = t.exons.begin(); exon != t.exons.end(); ++exon) {
         l = exon->end - exon->start + 1;
 
-        if (v <= start && start < v + l) {
-            a = exon->start + max(start, v);
-            b = exon->start + min(end + 1, v + l);
+        if (start < l) {
+            a = exon->start + start;
+            b = exon->start + min(end + 1, l);
 
             copy(src + a, src + b, dest + u);
             u += b - a;
-            start = v + l;
 
-            if (start > end) break;
+            start += b - a;
         }
 
+        /* make (start, end) relative to the next exon */
+        start -= l;
+        end   -= l;
+
         v += l;
+        if (start < 0 || end < 0) break;
     }
 
     dest[u] = '\0';
