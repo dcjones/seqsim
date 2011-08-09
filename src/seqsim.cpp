@@ -15,13 +15,17 @@
 #include "common.h"
 #include "gtf_parse.h"
 #include "fastq-parse.h"
+#include <algorithm>
 #include <deque>
+#include <list>
 #include <map>
 #include <set>
+#include <vector>
 #include <string>
 #include <cassert>
 #include <cstring>
 #include <cstdio>
+#include <cmath>
 #include <getopt.h>
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_rng.h>
@@ -44,9 +48,9 @@ static struct
     double       expr_a;
     double       frag_pr;
     size_t       frag_n;
-    unsigned int size_low;
-    unsigned int size_high;
-    double       size_noise;
+    double       size_mean;
+    double       size_std;
+    double       nonunif_sd;
     const char*  genome_fn;
     const char*  genes_fn;
     gsl_rng*     rng;
@@ -163,6 +167,140 @@ class transcript
         string   transcript_id;
 
         set<exon> exons;
+};
+
+
+/* A sparse vector giving the non-uniformity across the genome. */
+class bias
+{
+    public:
+        bias(const deque<transcript>& T)
+        {
+            printf("generating non-uniformity ... "); fflush(stdout);
+            map<string, deque<exon> > all_exons;
+
+            deque<transcript>::const_iterator t;
+            for (t = T.begin(); t != T.end(); ++t) {
+                all_exons[t->seqname].insert(all_exons[t->seqname].end(),
+                        t->exons.begin(), t->exons.end());
+            }
+
+            map<string, deque<exon> >::iterator i;
+            list<exon>::iterator u, v, w;
+            for (i = all_exons.begin(); i != all_exons.end(); ++i) {
+                sort(i->second.begin(), i->second.end());
+
+                /* create a list, so we can efficiently erase redundant exons */
+                list<exon> exons(i->second.begin(), i->second.end());
+
+                u = exons.begin();
+                v = exons.begin();
+                ++v;
+
+                while (v != exons.end()) {
+
+                    while (v != exons.end() &&
+                           u->start <= v->end && v->start <= u->end) {
+
+                        u->end = max(u->end, v->end);
+                        ++v;
+                    }
+
+                    // erase
+                    w = v;
+                    --w;
+
+                    if (u != w) {
+                        ++u;
+                        exons.erase(u, v);
+                    }
+
+                    u = v;
+                    ++v;
+                }
+
+                i->second.clear();
+                i->second.insert(i->second.end(), exons.begin(), exons.end());
+            }
+
+
+            deque<exon>::const_iterator j;
+            size_t k;
+            for (i = all_exons.begin(); i != all_exons.end(); ++i) {
+                for (j = i->second.begin(); j != i->second.end(); ++j) {
+                    indexes[i->first].push_back(j->start);
+                    blocks[i->first].push_back(vector<double>(j->end - j->start + 1));
+
+                    /* entirely intependent bias: draw random beta variates */
+                    vector<double>& bs = blocks[i->first].back();
+                    for (k = 0; k < bs.size(); ++k) {
+                        bs[k] = exp(gsl_ran_gaussian(args.rng, args.nonunif_sd));
+                    }
+                }
+            }
+
+            printf("done.\n");
+        }
+
+
+        /* Build the cumulative sum of transcript t's bias vector. */
+        void get_bias(vector<double>& bs, const transcript& t)
+        {
+            bs.resize(t.exonic_length());
+
+            size_t i = 0;
+            size_t j;
+            size_t k;
+            set<exon>::const_iterator e;
+            for (e = t.exons.begin(); e != t.exons.end(); ++e) {
+
+                /* 1. find the proper block in 'blocks' */
+                j = find_block_idx(t.seqname, e->start);
+
+
+                assert(indexes[t.seqname][j] <= e->start);
+
+                k = e->start - indexes[t.seqname][j];
+
+                block& B = blocks[t.seqname][j];
+
+                assert((pos_t) (B.size() - k) >=
+                        e->end - e->start);
+
+                /* 2. copy the proper part of this block */
+                copy(B.begin() + k,
+                     B.begin() + k + (e->end - e->start + 1),
+                     bs.begin() + i);
+
+                i += e->end - e->start + 1;
+            }
+
+            // cumulative sum, for binary search
+            for (i = 1; i < bs.size(); ++i) {
+                bs[i] += bs[i - 1];
+            }
+        }
+
+
+    private:
+        int find_block_idx(const string& seqname, pos_t start)
+        {
+            index_deque& I = indexes[seqname];
+            index_deque::iterator i;
+
+            i = lower_bound(I.begin(), I.end(), start);
+
+            if (*i != start) --i;
+
+            return (int) (i - I.begin());
+        }
+
+        typedef vector<double> block;
+        typedef deque<block>   block_deque;
+        typedef deque<int>     index_deque;
+
+        map<string, block_deque> blocks;
+        map<string, index_deque> indexes;
 };
 
 
@@ -283,80 +421,100 @@ int search_sorted(double y, double* xs, size_t n)
 }
 
 
+/* Generate a fragment count for each trancript, given m fragment in total. */
+void generate_fragment_counts(unsigned int* cs,
+                              const deque<transcript>& T,
+                              const double* xs,
+                              size_t m)
+{
+    printf("generating fragment counts ... "); fflush(stdout);
+
+    const size_t n = T.size();
+
+    /* probability of drawing a fragment from each transcript */
+    double* ws = new double [n];
+
+    size_t i;
+    pos_t len, k;
+    for (i = 0; i < n; ++i) {
+        ws[i] = 0.0;
+        len = T[i].exonic_length();
+
+        const pos_t k_max = min(len, (pos_t) (args.size_mean + 6.0 * args.size_std));
+
+        for (k = 1; k <= k_max; ++k) {
+            ws[i] += (double) (len - k + 1) * gsl_ran_gaussian_pdf((double) k - args.size_mean, args.size_std);
+        }
+
+        ws[i] *= xs[i];
+    }
+
+
+    memset(cs, 0, n * sizeof(unsigned int));
+    gsl_ran_multinomial(args.rng, n, (unsigned int) m, ws, cs);
+
+    delete [] ws;
+
+    printf("done.\n");
+}
+
+
+
 void generate_fragments(int* fs,
                         const deque<transcript>& T,
-                        const double* xs,
-                        size_t m)
+                        const unsigned int* cs)
 {
-    printf("generating fragments ...\n");
-    size_t n = T.size();
+    printf("generating fragments ...\n"); fflush(stdout);
 
-    // compute a weight vector
-    double* ws = new double [n];
-    size_t i;
-    for (i = 0; i < n; ++i) {
-        ws[i] = (double) T[i].exonic_length() * xs[i];
-    }
+    bias B(T);
+    vector<double> bs;
 
-    double z = 0;
-    for (i = 0; i < n; ++i) z += ws[i];
-    for (i = 0; i < n; ++i) ws[i] /= z;
+    const size_t n = T.size();
+    size_t i, j, k;
+    double a, p;
+    double M = 1.0 / gsl_ran_gaussian_pdf(0.0, args.size_std);
 
-    double cumsum = 0.0;
-    z = 0.0;
-    for (i = 0; i < n; ++i) {
-        z = ws[i];
-        ws[i] += cumsum;
-        cumsum += z;
-    }
+    vector<double>::iterator l;
 
     pos_t start, end;
-    pos_t fraglen;
-    pos_t l;
 
-    double nudge;
+    k = 0;
+    for (i = 0; i < n; ++i) {
+        B.get_bias(bs, T[i]);
 
-    double r;
-    size_t j;
-    for (i = 0; i < m; ) {
-        // choose a random transcript
-        r = gsl_rng_uniform(args.rng);
-        j = (size_t) search_sorted(r, ws, n);
+        for (j = 0; j < cs[i]; ) {
+            /* choose a random start position */
+            a = gsl_rng_uniform(args.rng) * bs.back();
+            l = lower_bound(bs.begin(), bs.end(), a);
+            start = l - bs.begin();
 
-        l = T[j].exonic_length();
+            /* choose a random end position */
+            a = a + gsl_ran_geometric(args.rng, args.frag_pr);
+            l = lower_bound(l, bs.end(), a);
+            if (l == bs.end()) continue;
+            end = l - bs.begin();
 
-        // choose start and end points
-        start = gsl_rng_uniform_int(args.rng, l);
-        end   = start + gsl_ran_geometric(args.rng, args.frag_pr);
+            /* simulate size selection: reject fragments according to a normal
+             * distribution */
+            p = M * gsl_ran_gaussian_pdf((double) (end - start + 1) - args.size_mean,
+                                         args.size_std);
+            if (gsl_rng_uniform(args.rng) > p) continue;
 
-        // reject improper fragments (end breakpoint outside the mRNA)
-        if (end >= l) continue;
+            fs[k * 3 + 0] = i;
+            fs[k * 3 + 0] = start;
+            fs[k * 3 + 0] = end;
 
-        // reject fragments too short to sequence
-        fraglen = end - start + 1;
-        if (fraglen < (pos_t) args.readlen) continue;
+            ++j;
+            ++k;
 
-        // reject fragments lost in size selection
-        nudge = gsl_ran_gaussian(args.rng, args.size_noise);
-        if ((double) fraglen < (double) args.size_low + nudge) continue;
-
-        nudge = gsl_ran_gaussian(args.rng, args.size_noise);
-        if ((double) fraglen > (double) args.size_high + nudge) continue;
-
-        fs[i * 3 + 0] = j;
-        fs[i * 3 + 1] = start;
-        fs[i * 3 + 2] = end;
-
-        ++i;
-
-        if (i % 100000 == 0) {
-            printf("\t%zu\n", i);
+            if (k % 100000 == 0) {
+                printf("\t%zu\n", k);
+            }
         }
     }
 
     printf("done.\n");
 }
-
 
 
 /* Given n size-selected fragments, generate m reads. */
@@ -545,11 +703,10 @@ int main(int argc, char* argv[])
     args.expr_pr    = 0.4;
     args.expr_a     = 1.0;
     args.frag_pr    = 0.004;
-    //args.frag_n     = 50000000;
     args.frag_n     = 500000;
-    args.size_low   = 180;
-    args.size_high  = 220;
-    args.size_noise = 5.0;
+    args.size_mean  = 200.0;
+    args.size_std   = 20.0;
+    args.nonunif_sd = 0.1;
     args.genome_fn  = NULL;
     args.genes_fn   = NULL;
     args.rng        = gsl_rng_alloc(gsl_rng_mt19937);
@@ -567,9 +724,9 @@ int main(int argc, char* argv[])
         {"expr-a",     required_argument, NULL,  0 },
         {"frag-pr",    required_argument, NULL,  0 },
         {"frag-n",     required_argument, NULL,  0 },
-        {"size-low",   required_argument, NULL,  0 },
-        {"size-high",  required_argument, NULL,  0 },
-        {"size-noise", required_argument, NULL,  0 },
+        {"size-mean",  required_argument, NULL,  0 },
+        {"size-std",   required_argument, NULL,  0 },
+        {"nonunif-std",    required_argument, NULL,  0 },
         {0, 0, 0, 0}
     };
 
@@ -603,15 +760,15 @@ int main(int argc, char* argv[])
                         break;
 
                     case 9:
-                        args.size_low = (unsigned int) atoi(optarg);
+                        args.size_mean = atof(optarg);
                         break;
 
                     case 10:
-                        args.size_high = (unsigned int) atoi(optarg);
+                        args.size_std = atof(optarg);
                         break;
 
                     case 11:
-                        args.size_noise = atof(optarg);
+                        args.nonunif_sd = atof(optarg);
                         break;
                 };
                 break;
@@ -685,9 +842,13 @@ int main(int argc, char* argv[])
     /* print expression */
     print_expression(T, xs);
 
+    /* generate fragment counts */
+    unsigned int* cs = new unsigned int [n];
+    generate_fragment_counts(cs, T, xs, args.frag_n);
+
     /* generate random fragments */
     int* fs = new int [3 * args.frag_n];
-    generate_fragments(fs, T, xs, args.frag_n);
+    generate_fragments(fs, T, cs);
 
     /* sample reads from random fragments */
     int* rs = new int [args.frag_n];

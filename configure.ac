@@ -4,8 +4,20 @@ AC_INIT([seqsim], [1.0], [dcjones@cs.washington.edu])
 AM_INIT_AUTOMAKE( [foreign -Wall -Werror] )
 AC_CONFIG_HEADERS([config.h])
 
-CFLAGS="-O0 -g -Wall -Wextra"
-CXXFLAGS="$CFLAGS"
+# optimization flags
+opt_CFLAGS="-g -Wall -Wextra -O3 -ffast-math"
+dbg_CFLAGS="-g -Wall -Wextra -O0"
+
+AC_ARG_ENABLE([debugging],
+              [AS_HELP_STRING([--enable-debugging],
+	                      [enable debugging info (default is no)])],
+              [], [enable_debugging=no])
+
+AS_IF([test "x$enable_debugging" = xyes],
+      [CFLAGS="$dbg_CFLAGS"],
+      [CFLAGS="$opt_CFLAGS"])
+
+CXXFLAGS=$CFLAGS
 
 
 # Checks for programs.
