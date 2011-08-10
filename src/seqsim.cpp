@@ -501,8 +501,8 @@ void generate_fragments(int* fs,
             if (gsl_rng_uniform(args.rng) > p) continue;
 
             fs[k * 3 + 0] = i;
-            fs[k * 3 + 0] = start;
-            fs[k * 3 + 0] = end;
+            fs[k * 3 + 1] = start;
+            fs[k * 3 + 2] = end;
 
             ++j;
             ++k;
