@@ -233,8 +233,15 @@ class bias
 
                     /* entirely intependent bias: draw random beta variates */
                     vector<double>& bs = blocks[i->first].back();
-                    for (k = 0; k < bs.size(); ++k) {
-                        bs[k] = exp(gsl_ran_gaussian(args.rng, args.nonunif_sd));
+                    if (args.nonunif_sd > 0.0) {
+                        for (k = 0; k < bs.size(); ++k) {
+                            bs[k] = exp(gsl_ran_gaussian(args.rng, args.nonunif_sd));
+                        }
+                    }
+                    else {
+                        for (k = 0; k < bs.size(); ++k) {
+                            bs[k] = 1.0;
+                        }
                     }
                 }
             }
@@ -689,6 +696,7 @@ void print_help(FILE* fout)
             "      --size-low=N    size selection lower bound\n"
             "      --size-high=N   size selection upper bound\n"
             "      --size-noise=N  inexectness / variance in size selection\n"
+            "      --nonunif-std=N degree of nonuniformity in fragment generation\n"
             "\n");
 }
 
@@ -706,7 +714,7 @@ int main(int argc, char* argv[])
     args.frag_n     = 500000;
     args.size_mean  = 200.0;
     args.size_std   = 20.0;
-    args.nonunif_sd = 0.1;
+    args.nonunif_sd = 0.0;
     args.genome_fn  = NULL;
     args.genes_fn   = NULL;
     args.rng        = gsl_rng_alloc(gsl_rng_mt19937);
