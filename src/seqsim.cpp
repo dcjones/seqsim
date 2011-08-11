@@ -50,7 +50,7 @@ static struct
     size_t       frag_n;
     double       size_mean;
     double       size_std;
-    double       nonunif_sd;
+    double       nonunif_var;
     const char*  genome_fn;
     const char*  genes_fn;
     gsl_rng*     rng;
@@ -233,14 +233,23 @@ class bias
 
                     /* entirely intependent bias: draw random beta variates */
                     vector<double>& bs = blocks[i->first].back();
-                    if (args.nonunif_sd > 0.0) {
+                    if (args.nonunif_var > 0.0) {
+                        double v = args.nonunif_var * (args.frag_pr * (1.0 - args.frag_pr));
+
+                        double alpha = (args.frag_pr * (1.0 - args.frag_pr)) / v - 1.0;
+                        double beta  = (1.0 - args.frag_pr) * alpha;
+                        alpha = args.frag_pr * alpha;
+
+                        assert(alpha > 0.0);
+                        assert(beta  > 0.0);
+
                         for (k = 0; k < bs.size(); ++k) {
-                            bs[k] = exp(gsl_ran_gaussian(args.rng, args.nonunif_sd));
+                            bs[k] = gsl_ran_beta(args.rng, alpha, beta);
                         }
                     }
                     else {
                         for (k = 0; k < bs.size(); ++k) {
-                            bs[k] = 1.0;
+                            bs[k] = args.frag_pr;
                         }
                     }
                 }
@@ -280,11 +289,6 @@ class bias
                      bs.begin() + i);
 
                 i += e->end - e->start + 1;
-            }
-
-            // cumulative sum, for binary search
-            for (i = 1; i < bs.size(); ++i) {
-                bs[i] += bs[i - 1];
             }
         }
 
@@ -474,6 +478,7 @@ void generate_fragments(int* fs,
     printf("generating fragments ...\n"); fflush(stdout);
 
     bias B(T);
+    vector<double> as;
     vector<double> bs;
 
     const size_t n = T.size();
@@ -487,17 +492,32 @@ void generate_fragments(int* fs,
 
     k = 0;
     for (i = 0; i < n; ++i) {
-        B.get_bias(bs, T[i]);
+        B.get_bias(as, T[i]);
+        bs = as;
+
+        // cumulative sum, for binary search to choose start position
+        for (i = 1; i < as.size(); ++i) {
+            as[i] += as[i - 1];
+        }
+
+        // cumulative sum of log(1-p), for binary searches for end position
+        for (i = 0; i < bs.size(); ++i) {
+            bs[i] = log(1.0 - bs[i]);
+        }
+
+        for (i = 1; i < bs.size(); ++i) {
+            bs[i] += bs[i - 1];
+        }
 
         for (j = 0; j < cs[i]; ) {
             /* choose a random start position */
-            a = gsl_rng_uniform(args.rng) * bs.back();
-            l = lower_bound(bs.begin(), bs.end(), a);
-            start = l - bs.begin();
+            a = gsl_rng_uniform(args.rng) * as.back();
+            l = lower_bound(as.begin(), as.end(), a);
+            start = l - as.begin();
 
             /* choose a random end position */
-            a = a + gsl_ran_geometric(args.rng, args.frag_pr);
-            l = lower_bound(l, bs.end(), a);
+            a = log(gsl_rng_uniform(args.rng)) + bs[start];
+            l = lower_bound(bs.begin(), bs.end(), a, greater<double>());
             if (l == bs.end()) continue;
             end = l - bs.begin();
 
@@ -703,38 +723,38 @@ void print_help(FILE* fout)
 
 int main(int argc, char* argv[])
 {
-    args.out        = "seqsim";
-    args.n          = 25000000;
-    args.paired_end = false;
-    args.stranded   = false;
-    args.readlen    = 75;
-    args.expr_pr    = 0.4;
-    args.expr_a     = 1.0;
-    args.frag_pr    = 0.004;
-    args.frag_n     = 500000;
-    args.size_mean  = 200.0;
-    args.size_std   = 20.0;
-    args.nonunif_sd = 0.0;
-    args.genome_fn  = NULL;
-    args.genes_fn   = NULL;
-    args.rng        = gsl_rng_alloc(gsl_rng_mt19937);
+    args.out         = "seqsim";
+    args.n           = 25000000;
+    args.paired_end  = false;
+    args.stranded    = false;
+    args.readlen     = 75;
+    args.expr_pr     = 0.4;
+    args.expr_a      = 1.0;
+    args.frag_pr     = 0.004;
+    args.frag_n      = 500000;
+    args.size_mean   = 200.0;
+    args.size_std    = 20.0;
+    args.nonunif_var = 0.0;
+    args.genome_fn   = NULL;
+    args.genes_fn    = NULL;
+    args.rng         = gsl_rng_alloc(gsl_rng_mt19937);
 
     setbuf(stdout, NULL);
 
     static struct option long_options[] =
     {
-        {"help",       no_argument,       NULL, 'h'},
-        {"out",        required_argument, NULL, 'o'},
-        {"paired-end", no_argument,       NULL, 'p'},
-        {"stranded",   no_argument,       NULL, 's'},
-        {"readlen",    required_argument, NULL, 'k'},
-        {"expr-pr",    required_argument, NULL,  0 }, // 5
-        {"expr-a",     required_argument, NULL,  0 },
-        {"frag-pr",    required_argument, NULL,  0 },
-        {"frag-n",     required_argument, NULL,  0 },
-        {"size-mean",  required_argument, NULL,  0 },
-        {"size-std",   required_argument, NULL,  0 },
-        {"nonunif-std",    required_argument, NULL,  0 },
+        {"help",        no_argument,       NULL, 'h'},
+        {"out",         required_argument, NULL, 'o'},
+        {"paired-end",  no_argument,       NULL, 'p'},
+        {"stranded",    no_argument,       NULL, 's'},
+        {"readlen",     required_argument, NULL, 'k'},
+        {"expr-pr",     required_argument, NULL,  0 }, // 5
+        {"expr-a",      required_argument, NULL,  0 },
+        {"frag-pr",     required_argument, NULL,  0 },
+        {"frag-n",      required_argument, NULL,  0 },
+        {"size-mean",   required_argument, NULL,  0 },
+        {"size-std",    required_argument, NULL,  0 },
+        {"nonunif-var", required_argument, NULL,  0 },
         {0, 0, 0, 0}
     };
 
@@ -776,7 +796,7 @@ int main(int argc, char* argv[])
                         break;
 
                     case 11:
-                        args.nonunif_sd = atof(optarg);
+                        args.nonunif_var = atof(optarg);
                         break;
                 };
                 break;
