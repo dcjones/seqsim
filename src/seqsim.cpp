@@ -496,17 +496,17 @@ void generate_fragments(int* fs,
         bs = as;
 
         // cumulative sum, for binary search to choose start position
-        for (i = 1; i < as.size(); ++i) {
-            as[i] += as[i - 1];
+        for (j = 1; j < as.size(); ++j) {
+            as[j] += as[j - 1];
         }
 
         // cumulative sum of log(1-p), for binary searches for end position
-        for (i = 0; i < bs.size(); ++i) {
-            bs[i] = log(1.0 - bs[i]);
+        for (j = 0; j < bs.size(); ++j) {
+            bs[j] = log(1.0 - bs[j]);
         }
 
-        for (i = 1; i < bs.size(); ++i) {
-            bs[i] += bs[i - 1];
+        for (j = 1; j < bs.size(); ++j) {
+            bs[j] += bs[j - 1];
         }
 
         for (j = 0; j < cs[i]; ) {
