@@ -1,12 +1,8 @@
 
 /*
- * seqsim
- * ------
+ * seqsim : the simplistic rna-seq simulator
  *
- * This is an extremely simple RNA-Seq simulation. I make no guarantees of accuracy
- * or correctness. This is not a substitute for testing with real data!
- *
- * Copyright (c) 2011 by Daniel C. Jones <dcjones@cs.washington.edu>
+ * Copyright (c) 2012 by Daniel C. Jones <dcjones@cs.washington.edu>
  *
  */
 
@@ -33,7 +29,9 @@
 
 using namespace std;
 
-const char max_qual = 'g';
+/* All qualities are set to the highest on the phred=33 scale
+ * as implemented in the Illumina pipeline. */
+const char max_qual = 'G';
 
 
 /* global arguments */

@@ -1,5 +1,4 @@
 
-AC_PREREQ([2.68])
 AC_INIT([seqsim], [1.0], [dcjones@cs.washington.edu])
 AM_INIT_AUTOMAKE( [foreign -Wall -Werror] )
 AC_CONFIG_HEADERS([config.h])
@@ -23,6 +22,8 @@ CXXFLAGS=$CFLAGS
 # Checks for programs.
 AC_PROG_CXX
 AC_PROG_CC
+AC_PROG_LIBTOOL
+AC_CONFIG_MACRO_DIR([m4])
 
 # Checks for libraries.
 
@@ -46,6 +47,6 @@ AC_CHECK_LIB([m],[cos])
 AC_CHECK_LIB([gslcblas],[cblas_dgemm])
 AC_CHECK_LIB([gsl],[gsl_blas_dgemm])
 
-AC_CONFIG_FILES([Makefile src/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile src/yaml-cpp/Makefile])
 AC_OUTPUT
 
