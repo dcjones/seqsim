@@ -8,8 +8,13 @@
 
 
 #include "config.h"
+#include "params.hpp"
+#include "express.hpp"
+#include "perturb.hpp"
+#include "generate.hpp"
 #include "common.h"
 #include "gtf_parse.h"
+#include "transcripts.hpp"
 #include "fastq-parse.h"
 #include <algorithm>
 #include <deque>
@@ -94,78 +99,6 @@ bool overlaps(pos_t u1, pos_t v1, pos_t u2, pos_t v2)
 
     return u1 <= v2 && v1 >= v2;
 }
-
-
-/* An interval, representing an exon. */
-struct exon
-{
-    exon(pos_t start, pos_t end)
-        : start(start), end(end)
-    {
-    }
-
-    pos_t start;
-    pos_t end;
-
-    bool operator < (const exon& other) const
-    {
-        if (start != other.start) return start < other.start;
-        else                      return end   < other.end;
-    }
-};
-
-
-/* Representation of a single transcript. */
-class transcript
-{
-    public:
-        transcript()
-            : strand(strand_na)
-        {
-        }
-
-        /* Length of the mature mRNA. */
-        pos_t exonic_length() const
-        {
-            pos_t len = 0;
-            set<exon>::iterator i;
-            for (i = exons.begin(); i != exons.end(); ++i) {
-                len += i->end - i->start + 1;
-            }
-
-            return len;
-        }
-
-        /* Insert an exon into the transcript. */
-        void add_exon(const gtf_row_t* row)
-        {
-            if (strcmp(row->feature->s, "exon") != 0) return;
-
-            str_t* val;
-
-            if (seqname.empty())     seqname = row->seqname->s;
-            if (strand == strand_na) strand  = row->strand;
-            if (gene_id.empty()) {
-                val = (str_t*) str_map_get(row->attributes, "gene_id", 7);
-                gene_id = val->s;
-            }
-
-            if (transcript_id.empty()) {
-                val = (str_t*) str_map_get(row->attributes, "transcript_id", 13);
-                transcript_id = val->s;
-            }
-
-            exons.insert(exon(row->start - 1, row->end - 1));
-        }
-
-
-        strand_t strand;
-        string   seqname;
-        string   gene_id;
-        string   transcript_id;
-
-        set<exon> exons;
-};
 
 
 /* A sparse vector giving the non-uniformity across the genome. */
@@ -686,280 +619,52 @@ void print_read(FILE* fout1, FILE* fout2,
 }
 
 
-
-
-void print_usage(FILE* fout)
+static void print_version(FILE* fout)
 {
-    fprintf(fout, "Usage: seqsim [options] genome.fa genes.gtf\n");
+    fprintf(fout, "seqsim %s\n", VERSION);
 }
 
 
-void print_help(FILE* fout)
+static void print_usage(FILE* fout)
 {
-    print_usage(fout);
-    fprintf(fout, "Version: %s\n\n", VERSION);
     fprintf(fout,
-            "Options:\n"
-            "  -h, --help          show this help message and exit\n"
-            "  -n N                number of reads / pairs to generate\n"
-            "  -o, --out=PRE       output files will have the given prefix\n"
-            "                      (default: 'seqsim')\n"
-            "  -s, --stranded      generate strand specific reads\n"
-            "  -p, --paired-end    generate paired-end reads\n"
-            "      --expr-pr=N     probability that a transcript is expressed\n"
-            "      --expr_a=N      expression distribution parameter (hint: a\n"
-            "                      small number results in more variance)\n"
-            "      --frag-pr=N     probability of fragmentation\n"
-            "      --frag-n=N      number of fragments to generate\n"
-            "      --size-low=N    size selection lower bound\n"
-            "      --size-high=N   size selection upper bound\n"
-            "      --size-noise=N  inexectness / variance in size selection\n"
-            "      --nonunif-std=N degree of nonuniformity in fragment generation\n"
-            "\n");
+        "Usage: seqsim <command> [<arguments>]\n\n"
+        "Where <command> is one of:\n"
+        "    express\n"
+        "    perturb\n"
+        "    generate\n\n"
+        "See 'seqsim help <command>' for more.\n"
+        );
 }
 
 
 int main(int argc, char* argv[])
 {
-    args.out         = "seqsim";
-    args.n           = 25000000;
-    args.paired_end  = false;
-    args.stranded    = false;
-    args.readlen     = 75;
-    args.expr_pr     = 0.4;
-    args.expr_a      = 1.0;
-    args.frag_pr     = 0.004;
-    args.frag_n      = 500000;
-    args.size_mean   = 200.0;
-    args.size_std    = 20.0;
-    args.nonunif_var = 0.0;
-    args.genome_fn   = NULL;
-    args.genes_fn    = NULL;
-    args.rng         = gsl_rng_alloc(gsl_rng_mt19937);
-
-    setbuf(stdout, NULL);
-
-    static struct option long_options[] =
-    {
-        {"help",        no_argument,       NULL, 'h'},
-        {"out",         required_argument, NULL, 'o'},
-        {"paired-end",  no_argument,       NULL, 'p'},
-        {"stranded",    no_argument,       NULL, 's'},
-        {"readlen",     required_argument, NULL, 'k'},
-        {"expr-pr",     required_argument, NULL,  0 }, // 5
-        {"expr-a",      required_argument, NULL,  0 },
-        {"frag-pr",     required_argument, NULL,  0 },
-        {"frag-n",      required_argument, NULL,  0 },
-        {"size-mean",   required_argument, NULL,  0 },
-        {"size-std",    required_argument, NULL,  0 },
-        {"nonunif-var", required_argument, NULL,  0 },
-        {0, 0, 0, 0}
-    };
-
-    const char* short_options = "hn:opsk:";
-
-    int opt;
-    int opt_idx;
-
-    while (1) {
-        opt = getopt_long(argc, argv, short_options, long_options, &opt_idx);
-
-        if (opt == -1) break;
-
-        switch (opt) {
-            case 0:
-                switch (opt_idx) {
-                    case 5:
-                        args.expr_pr = atof(optarg);
-                        break;
-
-                    case 6:
-                        args.expr_a = atof(optarg);
-                        break;
-
-                    case 7:
-                        args.frag_pr = atof(optarg);
-                        break;
-
-                    case 8:
-                        args.frag_n = (size_t) atoi(optarg);
-                        break;
-
-                    case 9:
-                        args.size_mean = atof(optarg);
-                        break;
-
-                    case 10:
-                        args.size_std = atof(optarg);
-                        break;
-
-                    case 11:
-                        args.nonunif_var = atof(optarg);
-                        break;
-                };
-                break;
-
-            case 'h':
-                print_help(stdout);
-                return EXIT_SUCCESS;
-
-            case 'n':
-                args.n = atoi(optarg);
-                break;
-
-            case 'o':
-                args.out = optarg;
-                break;
-
-            case 'p':
-                args.paired_end = true;
-                break;
-
-            case 's':
-                args.stranded = true;
-                break;
-
-            case 'k':
-                args.readlen = atoi(optarg);
-                break;
-
-            case '?':
-                return 1;
-
-            default:
-                abort();
-        }
-    }
-
-
-    /* no positional arguments */
-    if (optind == argc) {
+    if (argc < 2) {
         print_usage(stdout);
-        return 0;
+        return EXIT_SUCCESS;
     }
 
-    /* too few positional arguments */
-    else if (optind + 1 == argc) {
-        fprintf(stderr, "Too few arguments.\n\n");
-        print_usage(stderr);
-        return 1;
+    argv++;
+    argc--;
+
+    // special case for --version
+    if (strcmp(argv[0], "--version") == 0) {
+        print_version(stdout);
+        return EXIT_SUCCESS;
+    }
+    else if (strcmp(argv[0], "express") == 0) {
+        return seqsim_express(argc, argv);
+    }
+    else if (strcmp(argv[0], "perturb") == 0) {
+        return seqsim_perturb(argc, argv);
+    }
+    else if (strcmp(argv[0], "generate") == 0) {
+        return seqsim_generate(argc, argv);
     }
 
-    /* too many */
-    else if (optind + 2 < argc) {
-        fprintf(stderr, "Too many arguments.\n\n");
-        print_usage(stderr);
-        return 1;
-    }
-
-    args.genome_fn = argv[optind];
-    args.genes_fn  = argv[optind + 1];
-
-    set<string> seqnames = get_fasta_seqnames(args.genome_fn);
-
-    deque<transcript> T;
-    read_transcripts(T, args.genes_fn, seqnames);
-    size_t n = T.size();
-
-    /* generate / output true expression */
-    double* xs = new double [n];
-    generate_expression(xs, n);
-
-    /* print expression */
-    print_expression(T, xs);
-
-    /* generate fragment counts */
-    unsigned int* cs = new unsigned int [n];
-    generate_fragment_counts(cs, T, xs, args.frag_n);
-
-    /* generate random fragments */
-    int* fs = new int [3 * args.frag_n];
-    generate_fragments(fs, T, cs);
-
-    /* sample reads from random fragments */
-    int* rs = new int [args.frag_n];
-    generate_reads(rs, args.frag_n, args.n);
-
-    /* extract sequence */
-    printf("getting sequence ...\n");
-
-    FILE* fout1;
-    FILE* fout2;
-    char out_fn[1024];
-
-    if (args.paired_end) {
-        snprintf(out_fn, sizeof(out_fn), "%s.1.fastq", args.out);
-        fout1 = fopen_or_die(out_fn, "w");
-
-        snprintf(out_fn, sizeof(out_fn), "%s.2.fastq", args.out);
-        fout2 = fopen_or_die(out_fn, "w");
-    }
-    else {
-        snprintf(out_fn, sizeof(out_fn), "%s.fastq", args.out);
-        fout1 = fopen_or_die(out_fn, "w");
-
-        fout2 = NULL;
-    }
-
-    FILE* fin = fopen_or_die(args.genome_fn, "r");
-    fastq_t* fqf = fastq_open(fin);
-
-
-    seq_t* seq = fastq_alloc_seq();
-
-
-    deque<transcript>::iterator t;
-    int i, u, v;
-    set<int> us;
-
-    char* seq1 = new char [args.readlen + 1];
-    char* seq2 = new char [args.readlen + 1];
-
-
-    unsigned int readnum = 1;
-    while (fastq_next(fqf, seq)) {
-        printf("\t%s\n", seq->id1.s);
-
-        // indices of transcripts from this sequence
-        us.clear();
-        for (u = 0, t = T.begin(); t != T.end(); ++u, ++t) {
-            if (t->seqname == seq->id1.s) us.insert(u);
-        }
-
-        for (v = 0; v < (int) args.frag_n; ++v) {
-            /* skip fragments from transcripts not on this sequence */
-            if (us.find(fs[v * 3 + 0]) == us.end()) continue;
-
-            /* print generate reads */
-            for (i = 0; i < rs[v]; ++i, ++readnum) {
-                print_read(fout1, fout2, readnum,
-                           fs[v * 3 + 1], fs[v * 3 + 2],
-                           T[fs[v * 3]], seq->seq.s,
-                           seq1, seq2);
-            }
-        }
-    }
-
-    printf("done.\n");
-
-    fclose(fout1);
-    if (fout2) fclose(fout2);
-
-    fastq_free_seq(seq);
-    fastq_close(fqf);
-
-    delete [] seq1;
-    delete [] seq2;
-    delete [] rs;
-    delete [] fs;
-    delete [] xs;
-    gsl_rng_free(args.rng);
-
-    return 0;
+    fprintf(stderr, "Unknown command %s.\n\n", argv[0]);
+    return EXIT_FAILURE;
 }
-
-
-
-
 
 

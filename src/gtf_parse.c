@@ -64,6 +64,7 @@ void str_copy(str_t* dest, str_t* src)
     str_clear(dest);
     memcpy(dest->s, src->s, src->n);
     dest->n = src->n;
+    dest->s[dest->n] = '\0';
 }
 
 
