@@ -4,6 +4,50 @@
 #include "yaml-cpp/yaml.h"
 #include <fstream>
 
+using namespace std;
+
+
+/* Fail with dignity when an expected node is missing. */
+static const YAML::Node& yaml_get_node(const YAML::Node& node, const char* key)
+{
+    try {
+        return node[key];
+    }
+    catch (...) {
+        fprintf(stderr,
+            "seqsim: model specification is missing a %s parameter.\n", key);
+        exit(EXIT_FAILURE);
+    }
+}
+
+
+/* Try to get a node, returning NULL if it is not present. */
+static const YAML::Node* yaml_try_get_node(const YAML::Node& node, const char* key)
+{
+    try {
+        return node.FindValue(key);
+    }
+    catch (...) {
+        return NULL;
+    }
+}
+
+
+perturb_params::perturb_params()
+    : gene_pr(0.0)
+    , gene_mu(0.0)
+    , gene_sd(0.0)
+    , trans_pr(0.0)
+    , trans_mu(0.0)
+    , trans_sd(0.0)
+{
+}
+
+
+perturb_params::~perturb_params()
+{
+}
+
 
 params::params()
     /* some sane defaults */
@@ -17,27 +61,27 @@ params::params()
 {
     /* TODO: reasonable defaults */
 
-    gene_exp_p  = new double [2];
+    gene_exp_p.resize(2);
     gene_exp_p[0] = 0.5;
     gene_exp_p[1] = 0.5;
 
-    gene_exp_mu = new double [2];
+    gene_exp_mu.resize(2);
     gene_exp_mu[0] = 0.1;
     gene_exp_mu[1] = 10.0;
 
-    gene_exp_sd = new double [2];
+    gene_exp_sd.resize(2);
     gene_exp_sd[0] = 1.0;
     gene_exp_sd[1] = 1.0;
 
-    trans_exp_p  = new double [2];
+    trans_exp_p.resize(2);
     trans_exp_p[0] = 0.5;
     trans_exp_p[1] = 0.5;
 
-    trans_exp_mu = new double [2];
+    trans_exp_mu.resize(2);
     trans_exp_mu[0] = 0.1;
     trans_exp_mu[1] = 10.0;
 
-    trans_exp_sd = new double [2];
+    trans_exp_sd.resize(2);
     trans_exp_sd[0] = 1.0;
     trans_exp_sd[1] = 1.0;
 }
@@ -45,13 +89,6 @@ params::params()
 
 params::~params()
 {
-    delete [] gene_exp_p;
-    delete [] gene_exp_mu;
-    delete [] gene_exp_sd;
-
-    delete [] trans_exp_p;
-    delete [] trans_exp_mu;
-    delete [] trans_exp_sd;
 }
 
 void params::read(const char* fn)
@@ -65,50 +102,78 @@ void params::read(const char* fn)
 
     const YAML::Node* value;
 
-    if ((value = node.FindValue("N")))                  *value >> N;
-    if ((value = node.FindValue("paired")))             *value >> paired;
-    if ((value = node.FindValue("strand_specificity"))) *value >> strand_specificity;
-    if ((value = node.FindValue("size_lower")))         *value >> size_lower;
-    if ((value = node.FindValue("size_upper")))         *value >> size_upper;
-    if ((value = node.FindValue("size_var")))           *value >> size_var;
+    if ((value = yaml_try_get_node(node, "N")))                  *value >> N;
+    if ((value = yaml_try_get_node(node, "paired")))             *value >> paired;
+    if ((value = yaml_try_get_node(node, "strand_specificity"))) *value >> strand_specificity;
+    if ((value = yaml_try_get_node(node, "size_lower")))         *value >> size_lower;
+    if ((value = yaml_try_get_node(node, "size_upper")))         *value >> size_upper;
+    if ((value = yaml_try_get_node(node, "size_var")))           *value >> size_var;
 
-    if ((value = node.FindValue("gene_exp_k"))) {
+    if ((value = yaml_try_get_node(node, "gene_exp_k"))) {
         *value >> gene_exp_k;
-        delete [] gene_exp_mu;
-        delete [] gene_exp_sd;
-        gene_exp_mu = new double [gene_exp_k];
-        gene_exp_sd = new double [gene_exp_k];
+        gene_exp_p.resize(gene_exp_k);
+        gene_exp_mu.resize(gene_exp_k);
+        gene_exp_sd.resize(gene_exp_k);
     }
 
-    if ((value = node.FindValue("gene_exp_mu"))) {
+    if ((value = yaml_try_get_node(node, "gene_exp_p"))) {
+        for (i = 0; i < gene_exp_k; ++i) {
+            (*value)[i] >> gene_exp_p[i];
+        }
+    }
+
+    if ((value = yaml_try_get_node(node, "gene_exp_mu"))) {
         for (i = 0; i < gene_exp_k; ++i) {
             (*value)[i] >> gene_exp_mu[i];
         }
     }
 
-    if ((value = node.FindValue("gene_exp_sd"))) {
+    if ((value = yaml_try_get_node(node, "gene_exp_sd"))) {
         for (i = 0; i < gene_exp_k; ++i) {
             (*value)[i] >> gene_exp_sd[i];
         }
     }
 
-    if ((value = node.FindValue("trans_exp_k"))) {
+    if ((value = yaml_try_get_node(node, "trans_exp_k"))) {
         *value >> trans_exp_k;
-        delete [] trans_exp_mu;
-        delete [] trans_exp_sd;
-        trans_exp_mu = new double [trans_exp_k];
-        trans_exp_sd = new double [trans_exp_k];
+        trans_exp_p.resize(trans_exp_k);
+        trans_exp_mu.resize(trans_exp_k);
+        trans_exp_sd.resize(trans_exp_k);
     }
 
-    if ((value = node.FindValue("trans_exp_mu"))) {
+    if ((value = yaml_try_get_node(node, "trans_exp_p"))) {
+        for (i = 0; i < trans_exp_k; ++i) {
+            (*value)[i] >> trans_exp_p[i];
+        }
+    }
+
+    if ((value = yaml_try_get_node(node, "trans_exp_mu"))) {
         for (i = 0; i < trans_exp_k; ++i) {
             (*value)[i] >> trans_exp_mu[i];
         }
     }
 
-    if ((value = node.FindValue("trans_exp_sd"))) {
+    if ((value = yaml_try_get_node(node, "trans_exp_sd"))) {
         for (i = 0; i < trans_exp_k; ++i) {
             (*value)[i] >> trans_exp_sd[i];
+        }
+    }
+
+    if ((value = yaml_try_get_node(node, "sample_variation"))) {
+        for (YAML::Iterator j = value->begin(); j != value->end(); ++j) {
+            string name;
+            j.first() >> name;
+
+            perturb_params P;
+            yaml_get_node(j.second(), "gene_pr") >> P.gene_pr;
+            yaml_get_node(j.second(), "gene_mu") >> P.gene_mu;
+            yaml_get_node(j.second(), "gene_sd") >> P.gene_sd;
+
+            yaml_get_node(j.second(), "trans_pr") >> P.trans_pr;
+            yaml_get_node(j.second(), "trans_mu") >> P.trans_mu;
+            yaml_get_node(j.second(), "trans_sd") >> P.trans_sd;
+
+            perturbations[name] = P;
         }
     }
 }

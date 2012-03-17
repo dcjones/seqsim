@@ -73,11 +73,11 @@ int seqsim_express(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
-    gsl_rng* rng = gsl_rng_alloc(gsl_rng_taus);
-    gsl_rng_set(rng, rng_seed);
-
     params P;
     P.read(argv[opt_idx]);
+
+    gsl_rng* rng = gsl_rng_alloc(gsl_rng_taus);
+    gsl_rng_set(rng, rng_seed);
 
     FILE* gtf_fin = fopen(argv[opt_idx + 1], "r");
     if (gtf_fin == NULL) {
@@ -109,7 +109,7 @@ int seqsim_express(int argc, char* argv[])
     double* theta = new double [m];
     for (i = 0; i < m; ++i) {
         theta[i] = log_norm_mix(rng, P.gene_exp_k,
-            P.gene_exp_p, P.gene_exp_mu, P.gene_exp_sd);
+            &P.gene_exp_p.at(0), &P.gene_exp_mu.at(0), &P.gene_exp_sd.at(0));
         z += theta[i];
     }
 
@@ -120,7 +120,7 @@ int seqsim_express(int argc, char* argv[])
     double* phi = new double [n];
     for (i = 0; i < n; ++i) {
         phi[i] = log_norm_mix(rng, P.trans_exp_k,
-            P.trans_exp_p, P.trans_exp_mu, P.trans_exp_sd);
+            &P.trans_exp_p.at(0), &P.trans_exp_mu.at(0), &P.trans_exp_sd.at(0));
     }
 
     map<string, set<unsigned int> >::iterator gid;
@@ -139,7 +139,10 @@ int seqsim_express(int argc, char* argv[])
 
     /* print expression values */
     for (i = 0; i < n; ++i) {
-        printf("%s: %e\n", T[i].transcript_id.c_str(), phi[i]);
+        printf("%s\t%s\t%e\n",
+            T[i].gene_id.c_str(),
+            T[i].transcript_id.c_str(),
+            phi[i]);
     }
 
     gsl_rng_free(rng);

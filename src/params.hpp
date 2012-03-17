@@ -14,7 +14,31 @@
 #define SEQSIM_PARAMS_HPP
 
 #include <stdint.h>
-#include <stdlib.h>
+#include <cstdlib>
+#include <map>
+#include <vector>
+#include <string>
+
+
+struct perturb_params
+{
+    perturb_params();
+    ~perturb_params();
+
+    // Probability that a gene is effected by the perturbation.
+    double gene_pr;
+
+    // Normal distribution parameters by which gene expression is permuted
+    double gene_mu;
+    double gene_sd;
+
+    // Probability that a transcript is effected by the perturbation.
+    double trans_pr;
+
+    // Normal distribution parameters by which gene expression is permuted
+    double trans_mu;
+    double trans_sd;
+};
 
 
 struct params
@@ -38,15 +62,15 @@ struct params
 
     /* Log-normal mixture model from which gene expression is generated. */
     unsigned int gene_exp_k; /* number of components */
-    double* gene_exp_p;
-    double* gene_exp_mu;
-    double* gene_exp_sd;
+    std::vector<double> gene_exp_p;
+    std::vector<double> gene_exp_mu;
+    std::vector<double> gene_exp_sd;
 
     /* Log-normal mixture model from which transcript expression is generated. */
     unsigned int trans_exp_k; /* number of components. */
-    double* trans_exp_p;
-    double* trans_exp_mu;
-    double* trans_exp_sd;
+    std::vector<double> trans_exp_p;
+    std::vector<double> trans_exp_mu;
+    std::vector<double> trans_exp_sd;
 
     /* Size selection: fragments within the size bounds are generated.
      * If size_var is non-zero, these boundaries are fuzzy. Fragments
@@ -54,6 +78,9 @@ struct params
     double size_lower;
     double size_upper;
     double size_var;
+
+    /* Expression perturbations */
+    std::map<std::string, perturb_params> perturbations;
 };
 
 
