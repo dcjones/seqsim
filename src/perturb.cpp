@@ -145,7 +145,7 @@ int seqsim_perturb(int argc, char* argv[])
     perturb_params& perturbation = P.perturbations[perturb_name];
 
 
-    FILE* f = fopen(argv[opt_idx], "rb");
+    FILE* f = fopen(argv[opt_idx], "r");
     if (f == NULL) {
         fprintf(stderr,
             "seqsim perturb: no expression file named \"%s\".\n", argv[opt_idx]);
@@ -156,7 +156,6 @@ int seqsim_perturb(int argc, char* argv[])
     vector<string> trans_ids;
     vector<double> phi;
 
-    map<string, double> expr;
     char  line[512];
     char *sep1, *sep2;
     while (fgets(line, sizeof(line), f)) {

@@ -57,7 +57,7 @@ params::params()
     , gene_exp_k(2)
     , size_lower(150)
     , size_upper(170)
-    , size_var(5)
+    , size_sd(5)
 {
     /* TODO: reasonable defaults */
 
@@ -107,7 +107,7 @@ void params::read(const char* fn)
     if ((value = yaml_try_get_node(node, "strand_specificity"))) *value >> strand_specificity;
     if ((value = yaml_try_get_node(node, "size_lower")))         *value >> size_lower;
     if ((value = yaml_try_get_node(node, "size_upper")))         *value >> size_upper;
-    if ((value = yaml_try_get_node(node, "size_var")))           *value >> size_var;
+    if ((value = yaml_try_get_node(node, "size_sd")))            *value >> size_sd;
 
     if ((value = yaml_try_get_node(node, "gene_exp_k"))) {
         *value >> gene_exp_k;
@@ -246,8 +246,8 @@ void params::write(const char* fn)
     emit << YAML::Key   << "size_upper";
     emit << YAML::Value << size_upper;
 
-    emit << YAML::Key   << "size_var";
-    emit << YAML::Value << size_var;
+    emit << YAML::Key   << "size_sd";
+    emit << YAML::Value << size_sd;
 
     emit << YAML::EndMap;
     emit << YAML::EndDoc;

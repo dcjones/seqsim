@@ -53,6 +53,9 @@ struct params
     /* Number of reads to generate. */
     uint64_t N;
 
+    /* read length */
+    uint32_t readlen;
+
     /* Generate paired-end reads. */
     bool paired;
 
@@ -77,7 +80,7 @@ struct params
      * near the boundary are randomly accepted or rejected. */
     double size_lower;
     double size_upper;
-    double size_var;
+    double size_sd;
 
     /* Expression perturbations */
     std::map<std::string, perturb_params> perturbations;

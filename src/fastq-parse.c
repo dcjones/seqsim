@@ -25,7 +25,8 @@ static void fastq_alloc_str(str_t* s)
 
 static void fastq_expand_str(str_t* s)
 {
-    s->size *= 2;
+    if (s->size < 1000000) s->size *= 2;
+    else                   s->size += 1000000;
     s->s = realloc_or_die(s->s, s->size);
 }
 

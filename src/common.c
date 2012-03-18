@@ -2,6 +2,13 @@
 #include "common.h"
 #include <stdio.h>
 
+strand_t other_strand(strand_t s)
+{
+    if      (s == strand_pos) return strand_neg;
+    else if (s == strand_neg) return strand_pos;
+    else return strand_na;
+
+}
 
 void or_die(int b, const char* msg)
 {

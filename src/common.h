@@ -21,6 +21,8 @@ typedef enum {
     strand_na  = 2
 }strand_t;
 
+strand_t other_strand(strand_t);
+
 void or_die(int b, const char* msg);
 
 void* malloc_or_die(size_t);
