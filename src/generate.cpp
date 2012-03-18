@@ -83,11 +83,19 @@ void seqrc(char* seq, int n)
 
 static double frag_start_pr(const vector<double>& F, size_t len)
 {
-    if (len >= F.size()) len = F.size() - 1;
+    static map<size_t, double> memo;
+
+    if (len >= F.size()) return 0.0;
+
+    map<size_t, double>::iterator ans = memo.find(len);
+    if (ans != memo.end()) return ans->second;
 
     double p = 0.0;
     size_t i;
     for (i = 0; i < len; ++i) p += F[i];
+
+    memo[len] = p;
+
     return p;
 }
 
@@ -235,10 +243,13 @@ static void generate_fragment(
 
     /* choose end position */
     double rmax = F[len - i < F.size() ? len - i : F.size() - 1];
-    r = rmax / gsl_rng_uniform(rng);
+    r = rmax * gsl_rng_uniform(rng);
 
     i_ = lower_bound(F.begin(), F.end(), r);
     size_t j = i + (i_ - F.begin());
+
+    /* nudge if the length is too far due to floating point imprecision */
+    if (j >= len) j = len - 1;
 
 
     /* choose strand */
@@ -255,10 +266,10 @@ static void generate_fragment(
     if (P.paired) {
         if (strand == strand_pos) {
             get_read_seq(readseq1, t, seq, i, i + P.readlen - 1, strand_pos);
-            get_read_seq(readseq2, t, seq, i, j - P.readlen + 1, strand_neg);
+            get_read_seq(readseq2, t, seq, j - P.readlen + 1, j, strand_neg);
         }
         else {
-            get_read_seq(readseq1, t, seq, i, j - P.readlen + 1, strand_neg);
+            get_read_seq(readseq1, t, seq, j - P.readlen + 1, j, strand_neg);
             get_read_seq(readseq2, t, seq, i, i + P.readlen - 1, strand_pos);
         }
 
@@ -290,6 +301,7 @@ vector<double> make_frag_len_dist(const params& P)
     F.resize(n);
     int i;
     double a, b;
+    double z = 0.0;
 
     for (i = 0; i < n; ++i) {
         a = gsl_cdf_gaussian_P(
@@ -300,8 +312,10 @@ vector<double> make_frag_len_dist(const params& P)
                 (double) (i - P.size_lower),
                 P.size_sd);
 
-        F[i] = b - a;
+        z += (F[i] = b - a);
     }
+
+    for (i = 0; i < n; ++i) F[i] /= z;
 
     return F;
 }
@@ -397,7 +411,9 @@ int seqsim_generate(int argc, char* argv[])
         if ((sep1 = strchr(line, '\t')) == NULL) continue;
         if ((sep2 = strchr(sep1 + 1, '\t')) == NULL) continue;
 
-        expr[string(sep1 + 1, sep2 - sep1)] = atof(sep2 + 1);
+        string tid = string(sep1 + 1, sep2 - sep1 - 1);
+        double e = atof(sep2 + 1);
+        expr[tid] = e;
     }
     fclose(expr_f);
 
@@ -433,7 +449,7 @@ int seqsim_generate(int argc, char* argv[])
     gsl_rng* rng = gsl_rng_alloc(gsl_rng_taus);
     vector<unsigned int> C;
     C.resize(n);
-    gsl_ran_multinomial(rng, P.N, n, &R.at(0), &C.at(0));
+    gsl_ran_multinomial(rng, n, P.N, &R.at(0), &C.at(0));
 
 
     /* output fragment counts */

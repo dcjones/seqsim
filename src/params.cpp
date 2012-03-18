@@ -52,6 +52,7 @@ perturb_params::~perturb_params()
 params::params()
     /* some sane defaults */
     : N(1000000)
+    , readlen(100)
     , paired(true)
     , strand_specificity(0.5)
     , gene_exp_k(2)
@@ -103,6 +104,7 @@ void params::read(const char* fn)
     const YAML::Node* value;
 
     if ((value = yaml_try_get_node(node, "N")))                  *value >> N;
+    if ((value = yaml_try_get_node(node, "readlen")))            *value >> readlen;
     if ((value = yaml_try_get_node(node, "paired")))             *value >> paired;
     if ((value = yaml_try_get_node(node, "strand_specificity"))) *value >> strand_specificity;
     if ((value = yaml_try_get_node(node, "size_lower")))         *value >> size_lower;
