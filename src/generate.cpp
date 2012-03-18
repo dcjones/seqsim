@@ -21,6 +21,9 @@ using namespace std;
  * as implemented in the Illumina pipeline. */
 const char max_qual = 'G';
 
+/* Min quality is used in places where there are 'N's in the sequence. */
+const char min_qual = '!';
+
 
 void seqsim_generate_usage(FILE* fout)
 {
@@ -35,11 +38,47 @@ void seqsim_generate_help(FILE* fout)
     fprintf(fout,
         "Generate simulated RNA-Seq reads.\n\n"
         "Options:\n"
+        "  -p, --prefix=PRE   output files should have this prefix (default: \"seqsim\")\n"
         "  -h, --help         print this message\n"
         "  -o, --output=FILE  output to the given file (output is to standard output by default)\n"
         "  -s, --seed=SEED    use the given seed to the random number generator.\n"
         );
 }
+
+
+static char complement(char c)
+{
+    switch( c ) {
+        case 'a': return 't';
+        case 'c': return 'g';
+        case 'g': return 'c';
+        case 't': return 'a';
+        case 'n': return 'n';
+        case 'A': return 'T';
+        case 'C': return 'G';
+        case 'G': return 'C';
+        case 'T': return 'A';
+        case 'N': return 'N';
+        default:  return 'n';
+    }
+}
+
+void seqrc(char* seq, int n)
+{
+    char c;
+    int i,j;
+    i = 0;
+    j = n-1;
+    while( i < j ) {
+        c = complement(seq[i]);
+        seq[i] = complement(seq[j]);
+        seq[j] = c;
+        i++; j--;
+    }
+
+    if( i == j ) seq[i] = complement(seq[i]);
+}
+
 
 
 static double frag_start_pr(const vector<double>& F, size_t len)
@@ -76,30 +115,95 @@ static double effective_transcript_length(const vector<double>& F, size_t len)
 }
 
 
-static void print_read(FILE* fout,
-                       const transcript& t, const char* src,
-                       pos_t start, pos_t end, uint8_t strand,
-                       int mate)
+static void get_read_seq(char* dest,
+                         const transcript& t, const char* src,
+                         pos_t start, pos_t end, uint8_t strand)
 {
-    static uint64_t readnum = 0;
+    pos_t readlen = end - start + 1;
 
-    if (mate != 2) ++readnum;
+    pos_t u = 0; // offset into dest
+    pos_t v = 0; // offset into src
+    pos_t l;
+    pos_t a, b;
+    set<exon>::iterator e;
+    for (e = t.exons.begin(); e != t.exons.end(); ++e) {
+        l = e->end - e->start + 1;
 
-    fprintf(fout, ">seqsim.%"PRIu64"\n", readnum);
+        if (start < l) {
+            a = e->start + start;
+            b = e->start + min(end + 1, l);
 
-    /* TODO print sequence */
+            copy(src + a, src + b, dest + u);
+            u += b - a;
+            start += b - a;
+        }
+
+        /* make (start, end) relative to the next exon */
+        start -= l;
+        end   -= l;
+
+        v += l;
+        if (start < 0 || end < 0) break;
+    }
+
+    dest[u] = '\0';
+
+    assert(strlen(dest) == (size_t) readlen);
+
+    if (strand == strand_neg) seqrc(dest, readlen);
+}
 
 
-
-    fprintf(fout, "+\n");
-    pos_t i;
-    for (i = start; i <= end; ++i) fputc(max_qual, fout);
+static void print_quals(FILE* fout, char* seq)
+{
+    while (*seq) {
+        fputc(*seq == 'N' ? min_qual : max_qual, fout);
+        ++seq;
+    }
     fputc('\n', fout);
 }
 
 
+
+void generate_null_fragment(
+    const params& P, FILE* fout1, FILE* fout2, uint64_t readnum)
+{
+    size_t i;
+    if (P.paired) {
+        fprintf(fout1, "@seqsim.%"PRIu64"\n", readnum);
+        for (i = 0; i < P.readlen; ++i) fputc('N', fout1);
+        fputs("\n+\n", fout1);
+        for (i = 0; i < P.readlen; ++i) fputc('!', fout1);
+        fputc('\n', fout1);
+
+    }
+    else {
+        fprintf(fout1, "@seqsim.%"PRIu64"/1\n", readnum);
+        for (i = 0; i < P.readlen; ++i) fputc('N', fout1);
+        fputs("\n+\n", fout1);
+        for (i = 0; i < P.readlen; ++i) fputc('!', fout1);
+        fputc('\n', fout1);
+
+
+        fprintf(fout2, "@seqsim.%"PRIu64"/2\n", readnum);
+        for (i = 0; i < P.readlen; ++i) fputc('N', fout2);
+        fputs("\n+\n", fout2);
+        for (i = 0; i < P.readlen; ++i) fputc('!', fout2);
+        fputc('\n', fout2);
+    }
+}
+
+
+
+/* Generate a fragment from the given transcript. */
 static void generate_fragment(
-    gsl_rng* rng, params& P, FILE* fout,
+    gsl_rng* rng, params& P,
+
+    /* output fastq files */
+    FILE* fout1,
+    FILE* fout2,
+
+    uint64_t readnum,
 
     /* transcript from which the fragment originates */
     const transcript& t,
@@ -109,6 +213,10 @@ static void generate_fragment(
 
     /* cumulative distribution of fragment start positions */
     const vector<double>& fs,
+
+    /* space for read sequences */
+    char* readseq1,
+    char* readseq2,
 
     /* nucleotide sequences from which the transcript originates */
     const char* seq)
@@ -146,21 +254,30 @@ static void generate_fragment(
     /* extract sequence */
     if (P.paired) {
         if (strand == strand_pos) {
-            print_read(fout, t, seq, i, i + P.readlen - 1, strand_pos, 1);
-            print_read(fout, t, seq, i, j - P.readlen + 1, strand_neg, 2);
+            get_read_seq(readseq1, t, seq, i, i + P.readlen - 1, strand_pos);
+            get_read_seq(readseq2, t, seq, i, j - P.readlen + 1, strand_neg);
         }
         else {
-            print_read(fout, t, seq, i, j - P.readlen + 1, strand_neg, 1);
-            print_read(fout, t, seq, i, i + P.readlen - 1, strand_pos, 2);
+            get_read_seq(readseq1, t, seq, i, j - P.readlen + 1, strand_neg);
+            get_read_seq(readseq2, t, seq, i, i + P.readlen - 1, strand_pos);
         }
+
+        fprintf(fout1, "@seqsim.%"PRIu64"/1\n%s\n+\n", readnum, readseq1);
+        print_quals(fout1, readseq1);
+
+        fprintf(fout2, "@seqsim.%"PRIu64"/2\n%s\n+\n", readnum, readseq2);
+        print_quals(fout2, readseq2);
     }
     else {
         if (strand == strand_pos) {
-            print_read(fout, t, seq, i, i + P.readlen - 1, strand, 0);
+            get_read_seq(readseq1, t, seq, i, i + P.readlen - 1, strand);
         }
         else {
-            print_read(fout, t, seq, j - P.readlen + 1, j, strand, 0);
+            get_read_seq(readseq1, t, seq, j - P.readlen + 1, j, strand);
         }
+
+        fprintf(fout1, "@seqsim.%"PRIu64"\n%s\n+\n", readnum, readseq1);
+        print_quals(fout1, readseq1);
     }
 }
 
@@ -197,16 +314,18 @@ int seqsim_generate(int argc, char* argv[])
         {"help",   no_argument,       NULL, 'h'},
         {"output", required_argument, NULL, 'o'},
         {"seed",   required_argument, NULL, 's'},
+        {"prefix", required_argument, NULL, 'p'},
         {0, 0, 0, 0}
     };
 
+    const char* out_prefix = "seqsim";
     unsigned long rng_seed = 135792468;
     char* out_fn = NULL;
 
     int opt, opt_idx;
 
     while (true) {
-        opt = getopt_long(argc, argv, "ho:s:", long_options, &opt_idx);
+        opt = getopt_long(argc, argv, "ho:s:p:", long_options, &opt_idx);
         if (opt == -1) break;
 
         switch (opt) {
@@ -221,6 +340,10 @@ int seqsim_generate(int argc, char* argv[])
 
             case 's':
                 rng_seed = strtoul(optarg, NULL, 10);
+                break;
+
+            case 'p':
+                out_prefix = optarg;
                 break;
 
             default:
@@ -269,11 +392,12 @@ int seqsim_generate(int argc, char* argv[])
 
     char  line[512];
     char *sep1, *sep2;
+    map<string, double> expr;
     while (fgets(line, sizeof(line), expr_f)) {
         if ((sep1 = strchr(line, '\t')) == NULL) continue;
         if ((sep2 = strchr(sep1 + 1, '\t')) == NULL) continue;
 
-        /* TODO: what form do we need this in? */
+        expr[string(sep1 + 1, sep2 - sep1)] = atof(sep2 + 1);
     }
     fclose(expr_f);
 
@@ -297,7 +421,9 @@ int seqsim_generate(int argc, char* argv[])
 
     double z = 0.0;
     for (i = 0; i < n; ++i) {
-        z += (R[i] = effective_transcript_length(F, T[i].exonic_length()));
+        R[i] = effective_transcript_length(F, T[i].exonic_length());
+        R[i] *= expr[T[i].transcript_id];
+        z += R[i];
     }
 
     for (i = 0; i < n; ++i) R[i] /= z;
@@ -310,11 +436,69 @@ int seqsim_generate(int argc, char* argv[])
     gsl_ran_multinomial(rng, P.N, n, &R.at(0), &C.at(0));
 
 
+    /* output fragment counts */
+    string fn = out_prefix;
+    fn += ".frag_count.tab";
+    FILE* frag_cnt_f = fopen(fn.c_str(), "w");
+    if (frag_cnt_f == NULL) {
+        fprintf(stderr,
+            "seqsim generate: can't open file \"%s\" for writing.\n", fn.c_str());
+        return EXIT_FAILURE;
+    }
+
+    for (i = 0; i < n; ++i) {
+        fprintf(frag_cnt_f, "%s\t%u\n",
+            T[i].transcript_id.c_str(), C[i]);
+    }
+
+    fclose(frag_cnt_f);
+
+
     /* Index transcripts by chromosome. */
     map<string, vector<unsigned int> > trans_seqname;
     for (i = 0; i < n; ++i) {
         trans_seqname[T[i].seqname].push_back(i);
     }
+
+
+    /* output files */
+    FILE *fout1, *fout2;
+
+    if (P.paired) {
+        string fn = out_prefix;
+        fn += "_1.fastq";
+        fout1 = fopen(fn.c_str(), "w");
+        if (fout1 == NULL) {
+            fprintf(stderr,
+                "seqsim generate: can't open file \"%s\" for writing.\n", fn.c_str());
+            return EXIT_FAILURE;
+        }
+
+        fn = out_prefix;
+        fn += "_2.fastq";
+        fout2 = fopen(fn.c_str(), "w");
+        if (fout2 == NULL) {
+            fprintf(stderr,
+                "seqsim generate: can't open file \"%s\" for writing.\n", fn.c_str());
+            return EXIT_FAILURE;
+        }
+    }
+    else {
+        string fn = out_prefix;
+        fn += ".fastq";
+        fout1 = fopen(fn.c_str(), "w");
+        if (fout1 == NULL) {
+            fprintf(stderr,
+                "seqsim generate: can't open file \"%s\" for writing.\n", fn.c_str());
+            return EXIT_FAILURE;
+        }
+
+        fout2 = NULL;
+    }
+
+    /* space for read sequences */
+    char* readseq1 = new char[P.readlen];
+    char* readseq2 = new char[P.readlen];
 
 
     /* Generate fragments from each transcript. */
@@ -323,6 +507,7 @@ int seqsim_generate(int argc, char* argv[])
 
     /* transcript specific distribution over fragment start positions. */
     vector<double> fs;
+    uint64_t readnum = 0;
 
     while (fastq_next(fqf, seq)) {
         map<string, vector<unsigned int> >::iterator j = trans_seqname.find(seq->id1.s);
@@ -344,14 +529,29 @@ int seqsim_generate(int argc, char* argv[])
                 frag_start_cumdist(F, fs);
             }
 
-            while (C[*t]--) {
-                generate_fragment(rng, P, stdout, T[*t], fraglen_cumdist, fs, seq->seq.s);
+            while (C[*t] > 0) {
+                --C[*t];
+
+                generate_fragment(
+                    rng, P, fout1, fout2,
+                    ++readnum,
+                    T[*t], fraglen_cumdist, fs,
+                    readseq1, readseq2,
+                    seq->seq.s);
             }
         }
     }
 
     /* Print reads whose sequence is not in the genome for whatever reason. */
-    // TODO
+    for (i = 0; i < n; ++i) {
+        while (C[i] > 0) {
+            --C[i];
+            generate_null_fragment(P, fout1, fout2, ++readnum);
+        }
+    }
+
+    if (fout1) fclose(fout1);
+    if (fout2) fclose(fout2);
 
     fastq_close(fqf);
     fastq_free_seq(seq);
