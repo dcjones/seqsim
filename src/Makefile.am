@@ -1,7 +1,7 @@
 
 SUBDIRS = yaml-cpp
 
-bin_PROGRAMS = seqsim
+bin_PROGRAMS = seqsim fit_lnorm_mix
 
 seqsim_SOURCES = seqsim.cpp \
 				 common.c         common.h \
@@ -17,4 +17,8 @@ seqsim_SOURCES = seqsim.cpp \
 
 
 seqsim_LDADD = yaml-cpp/libyaml-cpp.la -lgsl -lgslcblas -lm -lz
+
+fit_lnorm_mix_SOURCES = fit_lnorm_mix.c gaussian_mixture.h gaussian_mixture.c
+
+fit_lnorm_mix_LDADD = -lgsl -lgslcblas -lm
 

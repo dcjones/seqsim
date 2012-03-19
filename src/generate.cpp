@@ -178,14 +178,6 @@ void generate_null_fragment(
 {
     size_t i;
     if (P.paired) {
-        fprintf(fout1, "@seqsim.%"PRIu64"\n", readnum);
-        for (i = 0; i < P.readlen; ++i) fputc('N', fout1);
-        fputs("\n+\n", fout1);
-        for (i = 0; i < P.readlen; ++i) fputc('!', fout1);
-        fputc('\n', fout1);
-
-    }
-    else {
         fprintf(fout1, "@seqsim.%"PRIu64"/1\n", readnum);
         for (i = 0; i < P.readlen; ++i) fputc('N', fout1);
         fputs("\n+\n", fout1);
@@ -198,6 +190,13 @@ void generate_null_fragment(
         fputs("\n+\n", fout2);
         for (i = 0; i < P.readlen; ++i) fputc('!', fout2);
         fputc('\n', fout2);
+    }
+    else {
+        fprintf(fout1, "@seqsim.%"PRIu64"\n", readnum);
+        for (i = 0; i < P.readlen; ++i) fputc('N', fout1);
+        fputs("\n+\n", fout1);
+        for (i = 0; i < P.readlen; ++i) fputc('!', fout1);
+        fputc('\n', fout1);
     }
 }
 
@@ -249,7 +248,7 @@ static void generate_fragment(
     size_t j = i + (i_ - F.begin());
 
     /* nudge if the length is too far due to floating point imprecision */
-    if (j >= len) j = len - 1;
+    if (j >= len) j = len   - 1;
 
 
     /* choose strand */
@@ -419,6 +418,7 @@ int seqsim_generate(int argc, char* argv[])
 
 
     /* Generate fragment length distribution. */
+    fprintf(stderr, "calculating sampling rate ... ");
     vector<double> F = make_frag_len_dist(P);
     vector<double> fraglen_cumdist;
     fraglen_cumdist.resize(F.size());
@@ -468,6 +468,8 @@ int seqsim_generate(int argc, char* argv[])
     }
 
     fclose(frag_cnt_f);
+
+    fprintf(stderr, "done.\n");
 
 
     /* Index transcripts by chromosome. */
@@ -525,7 +527,11 @@ int seqsim_generate(int argc, char* argv[])
     vector<double> fs;
     uint64_t readnum = 0;
 
+    fprintf(stderr, "generating reads ...\n");
+
     while (fastq_next(fqf, seq)) {
+        fprintf(stderr, "\t%s ...\n", seq->id1.s);
+
         map<string, vector<unsigned int> >::iterator j = trans_seqname.find(seq->id1.s);
         if (j == trans_seqname.end()) continue;
         vector<unsigned int>& ts = j->second;
@@ -574,6 +580,8 @@ int seqsim_generate(int argc, char* argv[])
 
     fclose(genome_f);
     gsl_rng_free(rng);
+
+    fprintf(stderr, "done.\n");
 
     return EXIT_SUCCESS;
 }
