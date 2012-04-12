@@ -12,7 +12,7 @@ using namespace std;
 
 void seqsim_perturb_usage(FILE* fout)
 {
-    fprintf(fout, "Usage: seqsim perturb [options] <model.yml> <perturbation> <expression.tab>");
+    fprintf(fout, "Usage: seqsim perturb [options] <model.yml> <perturbation> <expression.tab>\n");
 }
 
 void seqsim_perturb_help(FILE* fout)
@@ -100,10 +100,10 @@ int seqsim_perturb(int argc, char* argv[])
     unsigned long rng_seed = 135792468;
     char* out_fn = NULL;
 
-    int opt, opt_idx;
+    int opt;
 
     while (true) {
-        opt = getopt_long(argc, argv, "ho:s:", long_options, &opt_idx);
+        opt = getopt_long(argc, argv, "ho:s:", long_options, &optind);
         if (opt == -1) break;
 
         switch (opt) {
@@ -125,17 +125,15 @@ int seqsim_perturb(int argc, char* argv[])
         }
     }
 
-    ++opt_idx;
-
-    if (argc - opt_idx < 3) {
+    if (argc - optind < 3) {
         seqsim_perturb_usage(stderr);
         return EXIT_FAILURE;
     }
 
     params P;
-    P.read(argv[opt_idx++]);
+    P.read(argv[optind++]);
 
-    string perturb_name = argv[opt_idx++];
+    string perturb_name = argv[optind++];
     if (P.perturbations.find(perturb_name) == P.perturbations.end()) {
         fprintf(stderr,
             "seqsim perturb: no perturbation named \"%s\" is given by the model.\n",
@@ -145,10 +143,10 @@ int seqsim_perturb(int argc, char* argv[])
     perturb_params& perturbation = P.perturbations[perturb_name];
 
 
-    FILE* f = fopen(argv[opt_idx], "r");
+    FILE* f = fopen(argv[optind], "r");
     if (f == NULL) {
         fprintf(stderr,
-            "seqsim perturb: no expression file named \"%s\".\n", argv[opt_idx]);
+            "seqsim perturb: no expression file named \"%s\".\n", argv[optind]);
         return EXIT_FAILURE;
     }
 

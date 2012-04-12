@@ -50,6 +50,19 @@ int main(int argc, char* argv[])
     double* sds = malloc(k * sizeof(double));
 
     fit_gaussian_mixture(xs, n, k, ps, mus, sds);
+
+    size_t i;
+    printf("ps  = [ %e", ps[0]);
+    for (i = 1; i < k; ++i) printf(", %e", ps[i]);
+    printf(" ]\n");
+
+    printf("mus = [ %e", mus[0]);
+    for (i = 1; i < k; ++i) printf(", %e", mus[i]);
+    printf(" ]\n");
+
+    printf("sds = [ %e", sds[0]);
+    for (i = 1; i < k; ++i) printf(", %e", sds[i]);
+    printf(" ]\n");
     
     free(ps);
     free(mus);

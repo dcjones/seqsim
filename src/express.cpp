@@ -41,10 +41,10 @@ int seqsim_express(int argc, char* argv[])
     unsigned long rng_seed = 135792468;
     char* out_fn = NULL;
 
-    int opt, opt_idx;
+    int opt;
 
     while (true) {
-        opt = getopt_long(argc, argv, "ho:s:", long_options, &opt_idx);
+        opt = getopt_long(argc, argv, "ho:s:", long_options, NULL);
         if (opt == -1) break;
 
         switch (opt) {
@@ -66,22 +66,22 @@ int seqsim_express(int argc, char* argv[])
         }
     }
 
-    ++opt_idx;
+    // ++optind;
 
-    if (argc - opt_idx < 2) {
+    if (argc - optind < 2) {
         seqsim_express_usage(stderr);
-        return EXIT_FAILURE;
+        return EXIT_SUCCESS;
     }
 
     params P;
-    P.read(argv[opt_idx]);
+    P.read(argv[optind]);
 
     gsl_rng* rng = gsl_rng_alloc(gsl_rng_taus);
     gsl_rng_set(rng, rng_seed);
 
-    FILE* gtf_fin = fopen(argv[opt_idx + 1], "r");
+    FILE* gtf_fin = fopen(argv[optind + 1], "r");
     if (gtf_fin == NULL) {
-        fprintf(stderr, "seqsim: %s: cannot open file.\n", argv[opt_idx + 1]);
+        fprintf(stderr, "seqsim: %s: cannot open file.\n", argv[optind + 1]);
         return EXIT_FAILURE;
     }
 

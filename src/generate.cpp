@@ -19,7 +19,7 @@ using namespace std;
 
 /* All qualities are set to the highest on the phred=33 scale
  * as implemented in the Illumina pipeline. */
-const char max_qual = 'G';
+const char max_qual = 'I';
 
 /* Min quality is used in places where there are 'N's in the sequence. */
 const char min_qual = '!';
@@ -335,10 +335,10 @@ int seqsim_generate(int argc, char* argv[])
     unsigned long rng_seed = 135792468;
     char* out_fn = NULL;
 
-    int opt, opt_idx;
+    int opt;
 
     while (true) {
-        opt = getopt_long(argc, argv, "ho:s:p:", long_options, &opt_idx);
+        opt = getopt_long(argc, argv, "ho:s:p:", long_options, NULL);
         if (opt == -1) break;
 
         switch (opt) {
@@ -364,29 +364,27 @@ int seqsim_generate(int argc, char* argv[])
         }
     }
 
-    ++opt_idx;
-
-    if (argc - opt_idx < 4) {
+    if (argc - optind < 4) {
         seqsim_generate_usage(stderr);
         return EXIT_FAILURE;
     }
 
     params P;
-    P.read(argv[opt_idx++]);
+    P.read(argv[optind++]);
 
     /* Genome */
-    FILE* genome_f = fopen(argv[opt_idx], "r");
+    FILE* genome_f = fopen(argv[optind], "r");
     if (genome_f == NULL) {
-        fprintf(stderr, "seqsim generate: can't open FASTA file \"%s\".", argv[opt_idx]);
+        fprintf(stderr, "seqsim generate: can't open FASTA file \"%s\".", argv[optind]);
         exit(EXIT_FAILURE);
     }
-    opt_idx++;
+    optind++;
 
 
     /* Genes */
-    FILE* genes_f = fopen(argv[opt_idx], "r");
+    FILE* genes_f = fopen(argv[optind], "r");
     if (genes_f == NULL) {
-        fprintf(stderr, "seqsim generate: can't open GTF file \"%s\".", argv[opt_idx]);
+        fprintf(stderr, "seqsim generate: can't open GTF file \"%s\".", argv[optind]);
         exit(EXIT_FAILURE);
     }
 
@@ -394,13 +392,13 @@ int seqsim_generate(int argc, char* argv[])
     read_transcripts_from_gtf(genes_f, T);
     fclose(genes_f);
     size_t n = T.size();
-    opt_idx++;
+    optind++;
 
 
     /* Expression. */
-    FILE* expr_f = fopen(argv[opt_idx], "r");
+    FILE* expr_f = fopen(argv[optind], "r");
     if (expr_f == NULL) {
-        fprintf(stderr, "seqsim generate: can't open expression file \"%s\".", argv[opt_idx]);
+        fprintf(stderr, "seqsim generate: can't open expression file \"%s\".", argv[optind]);
     }
 
     char  line[512];

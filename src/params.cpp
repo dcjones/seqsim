@@ -161,7 +161,7 @@ void params::read(const char* fn)
         }
     }
 
-    if ((value = yaml_try_get_node(node, "sample_variation"))) {
+    if ((value = yaml_try_get_node(node, "perturbations"))) {
         for (YAML::Iterator j = value->begin(); j != value->end(); ++j) {
             string name;
             j.first() >> name;
