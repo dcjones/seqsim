@@ -73,18 +73,6 @@ params::params()
     gene_exp_sd.resize(2);
     gene_exp_sd[0] = 1.0;
     gene_exp_sd[1] = 1.0;
-
-    trans_exp_p.resize(2);
-    trans_exp_p[0] = 0.5;
-    trans_exp_p[1] = 0.5;
-
-    trans_exp_mu.resize(2);
-    trans_exp_mu[0] = 0.1;
-    trans_exp_mu[1] = 10.0;
-
-    trans_exp_sd.resize(2);
-    trans_exp_sd[0] = 1.0;
-    trans_exp_sd[1] = 1.0;
 }
 
 
@@ -136,29 +124,8 @@ void params::read(const char* fn)
         }
     }
 
-    if ((value = yaml_try_get_node(node, "trans_exp_k"))) {
-        *value >> trans_exp_k;
-        trans_exp_p.resize(trans_exp_k);
-        trans_exp_mu.resize(trans_exp_k);
-        trans_exp_sd.resize(trans_exp_k);
-    }
-
-    if ((value = yaml_try_get_node(node, "trans_exp_p"))) {
-        for (i = 0; i < trans_exp_k; ++i) {
-            (*value)[i] >> trans_exp_p[i];
-        }
-    }
-
-    if ((value = yaml_try_get_node(node, "trans_exp_mu"))) {
-        for (i = 0; i < trans_exp_k; ++i) {
-            (*value)[i] >> trans_exp_mu[i];
-        }
-    }
-
-    if ((value = yaml_try_get_node(node, "trans_exp_sd"))) {
-        for (i = 0; i < trans_exp_k; ++i) {
-            (*value)[i] >> trans_exp_sd[i];
-        }
+    if ((value = yaml_try_get_node(node, "trans_exp_alpha"))) {
+        *value >> trans_exp_alpha;
     }
 
     if ((value = yaml_try_get_node(node, "perturbations"))) {
@@ -221,26 +188,8 @@ void params::write(const char* fn)
     }
     emit << YAML::Value << YAML::EndSeq;
 
-    emit << YAML::Key    << "trans_exp_p";
-    emit << YAML::Value << YAML::BeginSeq;
-    for (unsigned int i = 0; i < trans_exp_k; ++i) {
-        emit << trans_exp_p[i];
-    }
-    emit << YAML::Value << YAML::EndSeq;
-
-    emit << YAML::Key    << "trans_exp_mu";
-    emit << YAML::Value << YAML::BeginSeq;
-    for (unsigned int i = 0; i < trans_exp_k; ++i) {
-        emit << trans_exp_mu[i];
-    }
-    emit << YAML::Value << YAML::EndSeq;
-
-    emit << YAML::Key    << "trans_exp_sd";
-    emit << YAML::Value << YAML::BeginSeq;
-    for (unsigned int i = 0; i < trans_exp_k; ++i) {
-        emit << trans_exp_sd[i];
-    }
-    emit << YAML::Value << YAML::EndSeq;
+    emit << YAML::Key    << "trans_exp_alpha";
+    emit << YAML::Value  << trans_exp_alpha;
 
     emit << YAML::Key   << "size_lower";
     emit << YAML::Value << size_lower;

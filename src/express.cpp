@@ -4,6 +4,7 @@
 #include "transcripts.hpp"
 #include "log_norm_mix.hpp"
 #include <gsl/gsl_rng.h>
+#include <gsl/gsl_randist.h>
 #include <getopt.h>
 #include <map>
 
@@ -119,8 +120,9 @@ int seqsim_express(int argc, char* argv[])
     /* generate transcript-wise expression. */
     double* phi = new double [n];
     for (i = 0; i < n; ++i) {
-        phi[i] = log_norm_mix(rng, P.trans_exp_k,
-            &P.trans_exp_p.at(0), &P.trans_exp_mu.at(0), &P.trans_exp_sd.at(0));
+        /* Note: drawing vector elements from gamma(a, 1) and normalizing
+         * results in a symmetric dirichlet(a) distribution. */
+        phi[i] = gsl_ran_gamma(rng, P.trans_exp_alpha, 1.0);
     }
 
     map<string, set<unsigned int> >::iterator gid;
@@ -151,6 +153,4 @@ int seqsim_express(int argc, char* argv[])
 
     return EXIT_SUCCESS;
 }
-
-
 

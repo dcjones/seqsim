@@ -69,11 +69,8 @@ struct params
     std::vector<double> gene_exp_mu;
     std::vector<double> gene_exp_sd;
 
-    /* Log-normal mixture model from which transcript expression is generated. */
-    unsigned int trans_exp_k; /* number of components. */
-    std::vector<double> trans_exp_p;
-    std::vector<double> trans_exp_mu;
-    std::vector<double> trans_exp_sd;
+    /* Symmetric Dirichlet distribution from which transcript expression is generated. */
+    double trans_exp_alpha;
 
     /* Size selection: fragments within the size bounds are generated.
      * If size_var is non-zero, these boundaries are fuzzy. Fragments
