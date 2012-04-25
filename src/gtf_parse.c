@@ -272,7 +272,7 @@ bool gtf_next(gtf_file_t* f, gtf_row_t* r)
 
                         case 5:
                             if (field->n == 1 && field->s[0] == '.') {
-                                r->score = NAN;
+                                r->score = 0.0;
                             }
                             else {
                                 r->score = strtod(field->s, &endptr);
