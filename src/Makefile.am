@@ -5,7 +5,7 @@ bin_PROGRAMS = seqsim fit_lnorm_mix
 
 seqsim_SOURCES = seqsim.cpp \
 				 common.c         common.h \
-				 fastq-parse.c    fastq-parse.h \
+				 read_fasta.c     read_fasta.h \
 				 gtf_parse.c      gtf_parse.h \
 				 str_map.c        str_map.h \
                  params.cpp       params.hpp \

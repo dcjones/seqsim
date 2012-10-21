@@ -15,7 +15,6 @@
 #include "common.h"
 #include "gtf_parse.h"
 #include "transcripts.hpp"
-#include "fastq-parse.h"
 #include <algorithm>
 #include <deque>
 #include <list>

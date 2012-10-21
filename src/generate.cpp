@@ -2,7 +2,7 @@
 #include "generate.hpp"
 #include "params.hpp"
 #include "transcripts.hpp"
-#include "fastq-parse.h"
+#include "read_fasta.h"
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_cdf.h>
@@ -343,7 +343,7 @@ int seqsim_generate(int argc, char* argv[])
 
         switch (opt) {
             case 'h':
-                seqsim_generate_help(stdout);                
+                seqsim_generate_help(stdout);
                 return EXIT_SUCCESS;
                 break;
 
@@ -518,8 +518,8 @@ int seqsim_generate(int argc, char* argv[])
 
 
     /* Generate fragments from each transcript. */
-    fastq_t* fqf = fastq_open(genome_f);
-    seq_t* seq = fastq_alloc_seq();
+    namedseq_t* seqs;
+    size_t num_seqs = read_fasta(genome_f, &seqs);
 
     /* transcript specific distribution over fragment start positions. */
     vector<double> fs;
@@ -527,10 +527,13 @@ int seqsim_generate(int argc, char* argv[])
 
     fprintf(stderr, "generating reads ...\n");
 
-    while (fastq_next(fqf, seq)) {
-        fprintf(stderr, "\t%s ...\n", seq->id1.s);
 
-        map<string, vector<unsigned int> >::iterator j = trans_seqname.find(seq->id1.s);
+    for (size_t i; i < num_seqs; ++i) {
+        namedseq_t* seq = &seqs[i];
+
+        fprintf(stderr, "\t%s ...\n", seq->name.s);
+
+        map<string, vector<unsigned int> >::iterator j = trans_seqname.find(seq->name.s);
         if (j == trans_seqname.end()) continue;
         vector<unsigned int>& ts = j->second;
 
@@ -573,8 +576,7 @@ int seqsim_generate(int argc, char* argv[])
     if (fout1) fclose(fout1);
     if (fout2) fclose(fout2);
 
-    fastq_close(fqf);
-    fastq_free_seq(seq);
+    /* TODO: free seqs */
 
     fclose(genome_f);
     gsl_rng_free(rng);
