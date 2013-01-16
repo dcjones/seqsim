@@ -124,9 +124,7 @@ void params::read(const char* fn)
         }
     }
 
-    if ((value = yaml_try_get_node(node, "trans_exp_alpha"))) {
-        *value >> trans_exp_alpha;
-    }
+    yaml_get_node(node, "trans_exp_alpha") >> trans_exp_alpha;
 
     if ((value = yaml_try_get_node(node, "perturbations"))) {
         for (YAML::Iterator j = value->begin(); j != value->end(); ++j) {

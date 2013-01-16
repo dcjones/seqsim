@@ -50,7 +50,7 @@ int seqsim_express(int argc, char* argv[])
 
         switch (opt) {
             case 'h':
-                seqsim_express_help(stdout);                
+                seqsim_express_help(stdout);
                 return EXIT_SUCCESS;
                 break;
 
